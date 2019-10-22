@@ -26,10 +26,10 @@ How did you solve the problem? What approaches did you try and what choices did 
 ##	Final Approach
 Please provide a bulleted description of your final approach. What ideas/decisions/features have been found to be the most important for your solution performance:
 -	Finally, I’ve used 4 Neural Network architectures for ensemble with same UNet-like decoder and different pretrained encoders:
-  -	Pretrained SE-ResNeXt50 encoder, trained on 8 folds.
-  -	Pretrained DPN92 encoder, trained on 8 folds.
-	- Pretrained SE-Net154 encoder, trained on 8 folds.
-  - Pretrained SE-ResNeXt101 encoder, trained on 4 folds.
+      -	Pretrained SE-ResNeXt50 encoder, trained on 8 folds.
+      -	Pretrained DPN92 encoder, trained on 8 folds.
+      - Pretrained SE-Net154 encoder, trained on 8 folds.
+      - Pretrained SE-ResNeXt101 encoder, trained on 4 folds.
 - Neural Network inputs:
   - Main input is an image with 9 channels: 4 channels from Pan-Sharpen image + 4 other channels from MUL images + 1 PAN channel.  
   - Additional inputs fused with decoder layers: nadir, catalog id one-hot encoded, tile x and y coordinates.

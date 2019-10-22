@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 mkdir -p foo /wdata/logs
 
 echo "Creating masks..."

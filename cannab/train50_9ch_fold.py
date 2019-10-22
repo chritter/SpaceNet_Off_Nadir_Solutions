@@ -96,6 +96,7 @@ class TrainData(Dataset):
         super().__init__()
         self.image_ids = image_ids
         self.epoch_size = epoch_size
+        #  In some images move pixels locally around (with random strengths).
         self.elastic = iaa.ElasticTransformation(alpha=(0.25, 1.2), sigma=0.2)
 
     def __len__(self):
@@ -106,9 +107,11 @@ class TrainData(Dataset):
 
         img = cv2.imread(path.join(train_dir, fn), cv2.IMREAD_COLOR)
         img2 = cv2.imread(path.join(train_dir2, fn), cv2.IMREAD_COLOR)
+
         if img2 is None:
             print('Error!', fn)
         img3 = cv2.imread(path.join(train_dir3, fn), cv2.IMREAD_COLOR)
+
         msk = cv2.imread(path.join(masks_folder, fn), cv2.IMREAD_COLOR)
         occluded_msk = cv2.imread(path.join(occluded_masks_dir, fn), cv2.IMREAD_UNCHANGED)      
         
