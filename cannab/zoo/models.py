@@ -27,8 +27,15 @@ class ConvRelu(nn.Module):
         return self.layer(x)
 
 class SCSEModule(nn.Module):
-    # according to https://arxiv.org/pdf/1808.08127.pdf concat is better
+    # according to https://arxiv.org/pdf/1808.08127.pdf (Roy18) concat is better
+    # scSE block as combination of spatial SE and channel-SE
     def __init__(self, channels, reduction=16, concat=False):
+        '''
+        SCSE Module from Roy18. Reduction
+        :param channels:
+        :param reduction: r parameter, bottle neck reduction (best result for r=16 in Roy18)
+        :param concat: if concating being used (true for best result in Roy18)
+        '''
         super(SCSEModule, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc1 = nn.Conv2d(channels, channels // reduction, kernel_size=1,
@@ -37,7 +44,7 @@ class SCSEModule(nn.Module):
         self.fc2 = nn.Conv2d(channels // reduction, channels, kernel_size=1,
                              padding=0)
         self.sigmoid = nn.Sigmoid()
-
+        # output channel 1, spatial SE
         self.spatial_se = nn.Sequential(nn.Conv2d(channels, 1, kernel_size=1,
                                                   stride=1, padding=0, bias=False),
                                         nn.Sigmoid())
@@ -46,13 +53,17 @@ class SCSEModule(nn.Module):
     def forward(self, x):
         module_input = x
 
+        # 1. channel SE
+        # first channel-wide global average pooling, z
         x = self.avg_pool(x)
+        # fully connected. but fc are conv layers??
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
         chn_se = self.sigmoid(x)
         chn_se = chn_se * module_input
 
+        # 2. spatial SE
         spa_se = self.spatial_se(module_input)
         spa_se = module_input * spa_se
         if self.concat:
@@ -63,14 +74,25 @@ class SCSEModule(nn.Module):
 
 class SeResNext50_9ch_Unet(nn.Module):
     def __init__(self, pretrained='imagenet', **kwargs):
+        '''
+        Definition of the ResNetxt50 as in Xie17, modified..?
+        :param pretrained:
+        :param kwargs:
+        '''
         super(SeResNext50_9ch_Unet, self).__init__()
         
         encoder_filters = [64, 256, 512, 1024, 2048]
         decoder_filters = [64, 96, 128, 256, 512]
 
+        # B) decoder
+        # conv 3x3, 64 inchannel?
         self.conv6 = ConvRelu(encoder_filters[-1], decoder_filters[-1])
-        self.conv6_2 = nn.Sequential(ConvRelu(decoder_filters[-1]+encoder_filters[-2] + 2 + 27 + 2, decoder_filters[-1]), SCSEModule(decoder_filters[-1], reduction=16, concat=True))
+
+        # first convolution, then a SCSE block
+        self.conv6_2 = nn.Sequential(ConvRelu(decoder_filters[-1]+encoder_filters[-2] + 2 + 27 + 2, decoder_filters[-1]),
+                                     SCSEModule(decoder_filters[-1], reduction=16, concat=True))
         self.conv7 = ConvRelu(decoder_filters[-1] * 2, decoder_filters[-2])
+        #
         self.conv7_2 = nn.Sequential(ConvRelu(decoder_filters[-2]+encoder_filters[-3] + 2 + 27 + 2, decoder_filters[-2]), SCSEModule(decoder_filters[-2], reduction=16, concat=True))
         self.conv8 = ConvRelu(decoder_filters[-2] * 2, decoder_filters[-3])
         self.conv8_2 = nn.Sequential(ConvRelu(decoder_filters[-3]+encoder_filters[-4] + 2 + 27 + 2, decoder_filters[-3]), SCSEModule(decoder_filters[-3], reduction=16, concat=True))
@@ -80,16 +102,25 @@ class SeResNext50_9ch_Unet(nn.Module):
 
         self.res = nn.Conv2d(decoder_filters[-5] + 2 + 2, 4, 1, stride=1, padding=0) #+ decoder_filters[-1] + decoder_filters[-2] + decoder_filters[-3]  + 27 
 
+        # purpose?
         self.off_nadir = nn.Sequential(nn.Linear(encoder_filters[-1], 64), nn.ReLU(inplace=True), nn.Linear(64, 1))
-        
+
+        # custom functions to initialize weights of conv layers
         self._initialize_weights()
 
+        # load se_resnext50 model, pretrained on image-net. check network properties.
         encoder = se_resnext50_32x4d(pretrained=pretrained)
 
+        # A) encoder
+        # 9 channel input, outputs the 64 channels as expected as input for ResNeXt50. conv1 as in Xie17 first layer
         conv1_new = nn.Conv2d(9, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+
+        # why are we doing this?
         _w = encoder.layer0.conv1.state_dict()
         _w['weight'] = torch.cat([0.8 * _w['weight'], 0.1 * _w['weight'], 0.1 * _w['weight']], 1)
         conv1_new.load_state_dict(_w)
+
+        # what is bn1 here?
         self.conv1 = nn.Sequential(conv1_new, encoder.layer0.bn1, encoder.layer0.relu1)
         self.conv2 = nn.Sequential(encoder.pool, encoder.layer1)
         self.conv3 = encoder.layer2
@@ -100,16 +131,20 @@ class SeResNext50_9ch_Unet(nn.Module):
     def forward(self, x, y, cat_inp, coord_inp):
         batch_size, C, H, W = x.shape
 
+        # encoder
         enc1 = self.conv1(x)
         enc2 = self.conv2(enc1)
         enc3 = self.conv3(enc2)
         enc4 = self.conv4(enc3)
         enc5 = self.conv5(enc4)
 
+        #
         x1 = F.adaptive_avg_pool2d(enc5, output_size=1).view(batch_size, -1)
         x1 = F.dropout(x1, p=0.05, training=self.training)
         x1 = self.off_nadir(x1)
 
+        # decoder: add the cat_inp and coord_inp at each upsampling block
+        # Additional inputs fused with decoder layers: nadir, catalog id one-hot encoded, tile x and y coordinates.
         dec6 = self.conv6(F.interpolate(enc5, scale_factor=2))
         dec6 = self.conv6_2(torch.cat([dec6, enc4,
                 F.upsample(y.view(batch_size, -1, 1, 1,), scale_factor=H//16, mode='nearest'),

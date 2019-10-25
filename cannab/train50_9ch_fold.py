@@ -94,6 +94,7 @@ def contrast(img, alpha):
 class TrainData(Dataset):
     def __init__(self, image_ids, epoch_size):
         super().__init__()
+        # only image ids of all images are loaded
         self.image_ids = image_ids
         self.epoch_size = epoch_size
         #  In some images move pixels locally around (with random strengths).
@@ -103,18 +104,26 @@ class TrainData(Dataset):
         return self.epoch_size
 
     def __getitem__(self, idx):
+
+
         fn = self.image_ids[idx] + '.png'
 
+        # cv.IMREAD_COLOR: If set, always convert image to the 3 channel BGR color image.
         img = cv2.imread(path.join(train_dir, fn), cv2.IMREAD_COLOR)
+        # 4 other channels from MUL images
         img2 = cv2.imread(path.join(train_dir2, fn), cv2.IMREAD_COLOR)
 
         if img2 is None:
             print('Error!', fn)
+        # 4 channels from Pan-Sharpen image
         img3 = cv2.imread(path.join(train_dir3, fn), cv2.IMREAD_COLOR)
 
         msk = cv2.imread(path.join(masks_folder, fn), cv2.IMREAD_COLOR)
+        # cv2.IMREAD_UNCHANGED : Loads image as such including alpha channel
         occluded_msk = cv2.imread(path.join(occluded_masks_dir, fn), cv2.IMREAD_UNCHANGED)      
-        
+
+        # do some augmentation appraoches
+
         if random.random() > 0.6:
             shift_pnt = (random.randint(-400, 400), random.randint(-400, 400))
             img = shift_image(img, shift_pnt)
@@ -192,12 +201,18 @@ class TrainData(Dataset):
         occluded_msk = (occluded_msk > 127) * 1
         occluded_msk = occluded_msk[..., np.newaxis]
 
+        # concat masks, 2d?
         msk = np.concatenate([msk, occluded_msk], axis=2)
 
+        # concat iamge channels: expect 8 channels
         img = np.concatenate([img, img2, img3], axis=2)
 
+        # to float32 and normalizatoin of channels
         img = preprocess_inputs(img)
 
+        # get image meta information such as nadir, cat_inp
+        # nadir is 1d int number, cat_inp: is 27d catalogueID array.
+        #coord_inp: 2d (x,y)
         nadir, cat_inp, coord_inp = parse_img_id(fn)
 
         img = torch.from_numpy(img.transpose((2, 0, 1))).float()
@@ -220,6 +235,7 @@ class ValData(Dataset):
     def __getitem__(self, idx):
         fn = self.image_ids[idx] + '.png'
 
+        #  4 channels from Pan-Sharpen image
         img = cv2.imread(path.join(train_dir, fn), cv2.IMREAD_COLOR)
         img2 = cv2.imread(path.join(train_dir2, fn), cv2.IMREAD_COLOR)
         img3 = cv2.imread(path.join(train_dir3, fn), cv2.IMREAD_COLOR)
@@ -228,6 +244,7 @@ class ValData(Dataset):
         msk = (msk > 127) * 1
         msk = msk[..., :2]
 
+        # concat all images
         img = np.concatenate([img, img2, img3], axis=2)
         
         img = img[98:-98, 98:-98, ...]

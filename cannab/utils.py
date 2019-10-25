@@ -20,6 +20,8 @@ def parse_img_id(img_id):
                 bst_dif = abs(cat_nadirs[i] - nadir) 
                 cid = i
 
+    # The training data has 27 folders. “Atlanta_nadir{Off-Nadir Angle}_catid_{CatalogID}”
+    # assume this is catalogID
     cat_inp = np.zeros((27,), dtype='float')
     cat_inp[cid] = 1
     

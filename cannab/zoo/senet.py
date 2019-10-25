@@ -526,6 +526,12 @@ def se_resnet152(num_classes=1000, pretrained='imagenet'):
 
 
 def se_resnext50_32x4d(num_classes=1000, pretrained='imagenet'):
+    '''
+    Initialize se_resnext50 model.
+    :param num_classes:
+    :param pretrained:
+    :return:
+    '''
     model = SENet(SEResNeXtBottleneck, [3, 4, 6, 3], groups=32, reduction=16,
                   dropout_p=None, inplanes=64, input_3x3=False,
                   downsample_kernel_size=1, downsample_padding=0,
