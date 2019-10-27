@@ -16,7 +16,15 @@ Christian Ritter
     * Additional inputs fused with decoder layers: nadir, catalog id one-hot encoded, tile x and y coordinates.
     * Data: https://spacenetchallenge.github.io/datasets/spacenet-OffNadir-summary.html
     * Training data size: 186GB images
-* 
+    * subset of whole data at SpaceNet-Off-Nadir_Sample.tar.gz 
+* Output of model:
+    * building bodies, 
+    * building borders (for better shapes learning and separation),
+    * separation area
+    * Additional (auxiliary) outputs with low weight in loss function
+        * Occluded buildings
+        * nadir
+* Complex loss class and functions with weights for different outputs above
 * Ensemble of models:
     * seresnext50: [1] https://arxiv.org/abs/1709.01507
         * SeResNext50_9ch_Unet, in  train50_9ch_fold.py
@@ -31,5 +39,8 @@ Christian Ritter
     * model encoders taken from https://github.com/Cadene/pretrained-models.pytorch
 * Next part is post-processing with watershed algorithm and LightGBM models to predict True Positives and False Positives.
 * See instructions.txt 
+*     # own implementation of adamw however it is now availabe in PyTorch: https://pytorch.org/docs/stable/optim.htmlhttps://pytorch.org/docs/stable/optim.html
+
 
 * Interesting appraoch to read in the 9 channels from images
+* Keeps track of dice loss, validate on dice loss.

@@ -191,6 +191,8 @@ class SeResNext50_9ch_Unet(nn.Module):
                 # F.upsample(cat_inp.view(batch_size, -1, 1, 1,), scale_factor=H, mode='nearest'),
                 F.upsample(coord_inp.view(batch_size, -1, 1, 1,), scale_factor=H, mode='nearest')
                 ], 1)
+
+        # returns ...
         return self.res(dec10), x1
 
     def _initialize_weights(self):

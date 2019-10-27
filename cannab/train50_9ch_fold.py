@@ -300,6 +300,8 @@ def validate(net, data_loader):
 
 def evaluate_val(data_val, best_score, model, snapshot_name, current_epoch):
     model = model.eval()
+
+    # calculates average dice loss..
     d = validate(model, data_loader=data_val)
     d = np.mean(d)
 
@@ -330,25 +332,36 @@ def train_epoch(current_epoch, loss_function, l1_loss, model, optimizer, schedul
         coord_inp = sample["coord_inp"].cuda(non_blocking=True)
         masks = sample["mask"].cuda(non_blocking=True)
         nadir = sample["nadir"].cuda(non_blocking=True)
+
+        # we predict nadir!! output out is 4d
         out, nadir_pred = model(imgs, nadir, cat_inp, coord_inp)
 
+        # calculate loss for building area, bulding boundary, area between buildings, building occluded
         loss1 = loss_function(out[:, 0, ...], masks[:, 0, ...])
         loss2 = loss_function(out[:, 1, ...], masks[:, 1, ...])
         loss3 = loss_function(out[:, 2, ...], masks[:, 2, ...])
         loss4 = loss_function(out[:, 3, ...], masks[:, 3, ...])
+
+        # specific loss for nadir
         nadir_loss = l1_loss(nadir_pred, nadir)
-        loss = loss1 + 0.4 * loss2 + 0.05 * loss3 + 0.005 * loss4 + 0.002 * nadir_loss #  
+
+        # complex loss function
+        loss = loss1 + 0.4 * loss2 + 0.05 * loss3 + 0.005 * loss4 + 0.002 * nadir_loss
 
         with torch.no_grad():
+            # for building area, calculate dice loss
             _probs = torch.sigmoid(out[:, 0, ...])
             dice_sc = 1 - dice_round(_probs, masks[:, 0, ...])
 
+        # update losses
         losses.update(loss1.item(), imgs.size(0))
         losses2.update(loss2.item(), imgs.size(0))
         losses3.update(loss3.item(), imgs.size(0))
         losses4.update(loss4.item(), imgs.size(0))
         nadir_losses.update(nadir_loss.item(), imgs.size(0))
         dices.update(dice_sc, imgs.size(0))
+
+        # print iterator intermedium step
         iterator.set_description(
             "epoch: {}; lr {:.7f}; Loss {loss.val:.4f} ({loss.avg:.4f}); Loss2 {loss2.val:.4f} ({loss2.avg:.4f}); Loss3 {loss3.val:.4f} ({loss3.avg:.4f}); Loss4 {loss4.val:.4f} ({loss4.avg:.4f}); Dice {dice.val:.4f} ({dice.avg:.4f}); Nadir {nadir_loss.val:.4f} ({nadir_loss.avg:.4f})".format(
                 current_epoch, scheduler.get_lr()[-1], loss=losses, loss2=losses2, loss3=losses3, loss4=losses4, dice=dices, nadir_loss=nadir_losses))
@@ -372,7 +385,10 @@ if __name__ == '__main__':
     vis_dev = str(fold)
     if fold > 3:
         vis_dev = str(fold - 4)
+
+    # Then the GPU IDs will be ordered by pci bus IDs.
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+
     os.environ["CUDA_VISIBLE_DEVICES"] = vis_dev
 
     cudnn.benchmark = True
@@ -406,10 +422,17 @@ if __name__ == '__main__':
 
     params = model.parameters()
 
+    # own implementation of adamw however it is now availabe in PyTorch: https://pytorch.org/docs/stable/optim.htmlhttps://pytorch.org/docs/stable/optim.html
     optimizer = AdamW(params, lr=1e-4, weight_decay=1e-4)
+
+    # scheduler: Set the learning rate of each parameter group to the initial lr decayed by gamma once the number
+    # of epoch reaches one of the milestones. epoch 4, epoch 12, epoch 22
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[4, 12, 22], gamma=0.5)
+
+    # use dice loss and focal loss as sum, with weights given..
     loss_function = ComboLoss({'dice': 1.0, 'focal': 10.0}, per_image=True).cuda()
-    
+
+    # Creates a criterion that uses a squared term if the absolute element-wise error falls below 1 and an L1 term otherwise.
     l1_loss = torch.nn.SmoothL1Loss().cuda()
 
     best_score = 0

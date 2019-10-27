@@ -91,6 +91,11 @@ class StableBCELoss(nn.Module):
 
 class ComboLoss(nn.Module):
     def __init__(self, weights, per_image=False):
+        '''
+        Generic loss function file to handle all kinds of losses.
+        :param weights:
+        :param per_image:
+        '''
         super().__init__()
         self.weights = weights
         self.bce = StableBCELoss()
@@ -111,6 +116,8 @@ class ComboLoss(nn.Module):
     def forward(self, outputs, targets):
         loss = 0
         weights = self.weights
+
+        # why sigmoid here?
         sigmoid_input = torch.sigmoid(outputs)
         for k, v in weights.items():
             if not v:
